@@ -17,8 +17,8 @@ const USERS_CACHE_TTL_SEC = 30 * 60; // 30分
 const USERS_CACHE_KEY = 'SLACK_USERS_CACHE';
 
 // 送信のデフォルト値（Script Properties で上書き可能）。
-const DEFAULT_MAX_RECIPIENTS = 10;
-const DEFAULT_SEND_INTERVAL_MS = 1000;
+const DEFAULT_MAX_RECIPIENTS = 30;
+const DEFAULT_SEND_INTERVAL_MS = 1200;
 
 /** Script Properties から1件取得。未設定なら null。 */
 function getProp(key) {
