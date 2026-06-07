@@ -20,6 +20,15 @@ function getUserList() {
   return list;
 }
 
+/** ユーザー一覧を user_id で引ける形にする。 */
+function indexUsersById(users) {
+  const byId = {};
+  (users || []).forEach((u) => {
+    if (u && u.id) byId[u.id] = u;
+  });
+  return byId;
+}
+
 /** users.list を全ページ取得し、除外・整形する。 */
 function fetchAllUsers() {
   const botToken = requireProp('SLACK_BOT_TOKEN');

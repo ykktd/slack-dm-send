@@ -106,7 +106,15 @@ function apiBootstrap(sessionId) {
   }
 
   const users = getUserList();
-  const me = users.filter((u) => u.id === senderUserId)[0] || { id: senderUserId, label: senderUserId };
+  const usersById = indexUsersById(users);
+  const me = usersById[senderUserId];
+  if (!me) {
+    return {
+      ok: false,
+      error: '送信者がこのツールの利用対象ユーザーではありません。通常ユーザー以上のサークルメンバーで連携してください。',
+    };
+  }
+
   return {
     ok: true,
     me: me,

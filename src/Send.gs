@@ -21,6 +21,9 @@ function apiSendTestToSelf(sessionId, message) {
   const s = resolveSender(sessionId);
   if (s.error) return { ok: false, error: s.error };
 
+  const senderError = validateAllowedSender(s.senderUserId, indexUsersById(getUserList()));
+  if (senderError) return { ok: false, error: senderError };
+
   const text = String(message || '').trim();
   if (!text) return { ok: false, error: '本文が空です。' };
 
@@ -44,6 +47,18 @@ function apiSendDm(sessionId, recipientUserIds, message) {
 
   const recipients = dedupe(recipientUserIds).filter(Boolean);
   if (recipients.length === 0) return { ok: false, error: '送信先が選択されていません。' };
+
+  const usersById = indexUsersById(getUserList());
+  const senderError = validateAllowedSender(s.senderUserId, usersById);
+  if (senderError) return { ok: false, error: senderError };
+
+  const disallowedRecipients = recipients.filter((id) => !usersById[id]);
+  if (disallowedRecipients.length > 0) {
+    return {
+      ok: false,
+      error: `許可されていない送信先が含まれています: ${disallowedRecipients.join(', ')}。送信先を選び直してください。`,
+    };
+  }
 
   const max = getMaxRecipients();
   if (recipients.length > max) {
@@ -84,4 +99,10 @@ function sendOneDm(userToken, recipientUserId, text) {
 /** 配列の重複除去。 */
 function dedupe(arr) {
   return Array.from(new Set(arr || []));
+}
+
+/** 送信者が利用対象ユーザーか確認する。 */
+function validateAllowedSender(senderUserId, usersById) {
+  if (usersById[senderUserId]) return '';
+  return '送信者がこのツールの利用対象ユーザーではありません。通常ユーザー以上のサークルメンバーで連携してください。';
 }
