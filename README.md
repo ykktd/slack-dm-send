@@ -1,160 +1,259 @@
-# Slack個別DM一斉送信ツール — セットアップ手順
+# Slack DM 一斉送信ツール — 管理者向け導入ガイド
 
-GAS（Google Apps Script）単体で動く、本人として複数人に個別DMを一斉送信するツール。
-OAuth連携に対応。手動token登録は管理者の検証用。
+Slackワークスペースのメンバーが、**自分本人として**複数人へ個別DMを送るためのGoogle Apps Script（GAS）製ツールです。
 
-## リポジトリ構成
-```
-.
-├── README.md            … 本ファイル（セットアップ手順）
-├── .gitignore
-├── docs/
-│   ├── slack_dm_send_tool_apphome_gas_webui_plan.md … 企画書
-│   └── IMPLEMENTATION_PLAN.md                        … 実装計画
-└── src/                 … GASソース一式（clasp rootDir）
-    ├── appsscript.json  … GASマニフェスト（V8 / Web App公開設定）
-    ├── Code.gs          … doGet/doPost ルーティング、画面描画、apiBootstrap
-    ├── Config.gs        … 設定値・定数
-    ├── Slack.gs         … Slack Web API ラッパ
-    ├── OAuth.gs         … OAuth と User token 保存
-    ├── Session.gs       … Web UI セッション
-    ├── Users.gs         … ユーザー一覧取得・キャッシュ
-    ├── Send.gs          … 一斉DM送信（apiSendDm）
-    ├── Command.gs       … スラッシュコマンド /dm-send
-    └── Index.html / Stylesheet.html / JavaScript.html … Web UI
-```
+このREADMEは、Slackワークスペース管理者またはアプリ管理者が、ツールをワークスペースへ導入・運用するための手順です。
 
-> clasp で `rootDir: src` を使う前提の配置。手動でGASエディタに貼る場合は、`src/` 内のファイルを**ファイル名のみ**（`Code`, `Index` など）で作成する。`.clasp.json` は scriptId を含むため `.gitignore` 済み（コミットしない）。
+## このツールでできること
+
+- 利用者本人のSlackアカウントとして、複数人に個別DMを送信します。
+- Botとして一斉投稿するのではなく、各送信者がSlack OAuthで本人連携して使います。
+- 送信先一覧はSlackのユーザー一覧から選択します。
+- 送信前にプレビューと確認画面を表示します。
+- 自分宛てテスト送信ができます。
+- 送信ログ、本文履歴、メールアドレスは保存しません。
+
+## 導入前に確認すること
+
+| 項目 | 内容 |
+|---|---|
+| Googleアカウント | GASプロジェクトを作成・管理できるアカウントが必要です。 |
+| Slack権限 | Slack Appを作成し、対象ワークスペースへインストールできる権限が必要です。 |
+| コード編集 | 通常の運用では不要です。初回導入時だけ、`src/` 内のファイル内容をGASエディタへ貼り付けます。 |
+| コマンド操作 | 不要です。`clasp` / `gh` は開発者向けの補足手順だけで使います。 |
+
+## 導入の全体像
+
+1. Slack Appを作成し、必要な権限を設定する
+2. GASプロジェクトを作成し、`src/` 内のファイルを貼り付ける
+3. GASをWebアプリとしてデプロイし、URLを取得する
+4. Slack AppにRedirect URLを登録する
+5. Slack Appをワークスペースへインストールする
+6. GASのScript PropertiesにSlack App情報を登録する
+7. 管理者が動作確認し、利用者へWebアプリURLを案内する
 
 ---
 
-## clasp / gh での自動化（推奨ワークフロー）
+## 1. Slack Appを作成する
 
-> 前提: <https://script.google.com/home/usersettings> で「Google Apps Script API」をオンにしておく。
+1. <https://api.slack.com/apps> を開きます。
+2. 「Create New App」→「From scratch」を選びます。
+3. App Nameを入力します。例: `Slack DM Send`
+4. 導入先のワークスペースを選びます。
+
+## 2. Slack Appの権限を設定する
+
+Slack Appの管理画面で「OAuth & Permissions」を開き、以下のScopeを追加します。
+
+| 種類 | Scope | 用途 |
+|---|---|---|
+| Bot Token Scopes | `users:read` | 送信先候補のユーザー一覧を取得するため |
+| User Token Scopes | `chat:write` | 利用者本人としてDM本文を送信するため |
+| User Token Scopes | `im:write` | 利用者本人としてDMチャンネルを開くため |
+
+設定後、まだ「Install to Workspace」は押さずに次へ進みます。
+
+## 3. GASプロジェクトを作成する
+
+1. <https://script.google.com> を開きます。
+2. 「新しいプロジェクト」を作成します。
+3. プロジェクト名を変更します。例: `Slack DM Send`
+4. 左側のファイル一覧で、`src/` 内のファイルをGASプロジェクトへ作成して貼り付けます。
+
+作成するファイルは以下です。
+
+| リポジトリ上のファイル | GASエディタで作るファイル |
+|---|---|
+| `src/Code.gs` | スクリプトファイル `Code` |
+| `src/Config.gs` | スクリプトファイル `Config` |
+| `src/Slack.gs` | スクリプトファイル `Slack` |
+| `src/OAuth.gs` | スクリプトファイル `OAuth` |
+| `src/Session.gs` | スクリプトファイル `Session` |
+| `src/Users.gs` | スクリプトファイル `Users` |
+| `src/Send.gs` | スクリプトファイル `Send` |
+| `src/Command.gs` | スクリプトファイル `Command` |
+| `src/Index.html` | HTMLファイル `Index` |
+| `src/Stylesheet.html` | HTMLファイル `Stylesheet` |
+| `src/JavaScript.html` | HTMLファイル `JavaScript` |
+
+### appsscript.jsonを設定する
+
+1. GASエディタ左側の「プロジェクトの設定」を開きます。
+2. 「appsscript.json マニフェスト ファイルをエディタで表示」をオンにします。
+3. 左側のファイル一覧に表示された `appsscript.json` を開きます。
+4. 内容を `src/appsscript.json` の内容で上書きします。
+5. 保存します。
+
+## 4. GASをWebアプリとしてデプロイする
+
+1. GASエディタ右上の「デプロイ」→「新しいデプロイ」を選びます。
+2. 種類の歯車アイコンから「ウェブアプリ」を選びます。
+3. 次のように設定します。
+
+| 項目 | 設定値 |
+|---|---|
+| 説明 | `v1` など任意 |
+| 次のユーザーとして実行 | 自分 |
+| アクセスできるユーザー | 全員 |
+
+4. 「デプロイ」を押します。
+5. 表示された **ウェブアプリURL** を控えます。URLは `https://script.google.com/macros/s/.../exec` の形です。
+
+このURLは以後、Slack App側のRedirect URLやSlash Command URLとして使います。変更しないように控えておいてください。
+
+利用者がGoogleアカウントでログインしなくても開ける必要があるため、「アクセスできるユーザー」は組織内限定ではなく、外部からアクセスできる設定を選んでください。
+
+## 5. Slack AppにRedirect URLを登録する
+
+1. Slack App管理画面に戻ります。
+2. 「OAuth & Permissions」を開きます。
+3. 「Redirect URLs」に、手順4で控えたGASのウェブアプリURLを追加します。
+4. 「Save URLs」を押します。
+
+Redirect URLは、GASのウェブアプリURLと完全一致している必要があります。末尾の `/exec` まで含めて登録してください。
+
+## 6. Slack Appをワークスペースへインストールする
+
+1. Slack App管理画面の「Install App」を開きます。
+2. 「Install to Workspace」を押します。
+3. 権限確認画面で許可します。
+4. 表示された **Bot User OAuth Token** を控えます。`xoxb-...` で始まる値です。
+
+## 7. GASのScript Propertiesを設定する
+
+GASエディタで「プロジェクトの設定」→「スクリプト プロパティ」を開き、以下を登録します。
+
+| キー | 値 | 必須 |
+|---|---|---|
+| `SLACK_CLIENT_ID` | Slack AppのClient ID | 必須 |
+| `SLACK_CLIENT_SECRET` | Slack AppのClient Secret | 必須 |
+| `SLACK_BOT_TOKEN` | 手順6で控えた `xoxb-...` | 必須 |
+| `WEB_APP_URL` | 手順4で控えたGASのウェブアプリURL | 必須 |
+| `MAX_RECIPIENTS` | 1回に送れる最大人数。例: `10` | 任意 |
+| `SEND_INTERVAL_MS` | 1件ごとの送信間隔。例: `1000` | 任意 |
+| `SLACK_VERIFICATION_TOKEN` | `/dm-send` を使う場合のみ設定 | 任意 |
+
+Client ID / Client Secretは、Slack App管理画面の「Basic Information」→「App Credentials」から確認できます。
+
+## 8. 管理者が動作確認する
+
+1. GASのウェブアプリURLを開きます。
+2. Googleの承認画面が表示された場合は、GASプロジェクトの管理者アカウントで承認します。
+3. 画面に「Slackと連携する」ボタンが表示されることを確認します。
+4. 「Slackと連携する」を押し、自分のSlackアカウントで許可します。
+5. 送信画面が開き、ユーザー一覧が表示されることを確認します。
+6. 自分宛てテスト送信を行い、Slack DMに届くことを確認します。
+
+確認できたら、利用者へGASのウェブアプリURLを案内してください。
+
+## 利用者への案内文例
+
+以下のような案内をSlackチャンネルなどに投稿できます。
+
+```text
+Slack DM一斉送信ツールを導入しました。
+以下のURLを開き、「Slackと連携する」から本人連携して利用してください。
+
+<GASのウェブアプリURL>
+
+このツールはBotではなく、利用者本人として個別DMを送信します。
+送信前に確認画面が表示され、自分宛てテスト送信もできます。
+```
+
+---
+
+## 任意: Slackで `/dm-send` から開けるようにする
+
+Slash Commandを設定すると、Slack上で `/dm-send` と入力してツールのリンクを表示できます。送信処理は行わず、本人にだけWeb UIリンクを返します。
+
+1. Slack App管理画面で「Slash Commands」を開きます。
+2. 「Create New Command」を押します。
+3. 以下を設定します。
+
+| 項目 | 値 |
+|---|---|
+| Command | `/dm-send` |
+| Request URL | GASのウェブアプリURL |
+| Short Description | `DM一斉送信ツールを開く` など |
+
+4. Slack App管理画面の「Basic Information」→「App Credentials」からVerification Tokenを確認します。
+5. GASのScript Propertiesに `SLACK_VERIFICATION_TOKEN` として登録します。
+
+この実装では、GASの制約によりSlackの `X-Slack-Signature` ヘッダを読めません。そのため、Slash Commandの検証にはlegacy verification tokenを使います。
+
+## コードを更新した場合
+
+GASエディタ上でファイルを修正した場合は、変更を保存しただけでは公開中のWebアプリに反映されないことがあります。
+
+1. GASエディタ右上の「デプロイ」→「デプロイを管理」を開きます。
+2. 現在のデプロイを選び、鉛筆アイコンで編集します。
+3. 「バージョン」で「新バージョン」を選びます。
+4. 「デプロイ」を押します。
+
+既存のデプロイを更新すれば、GASのウェブアプリURLは変わりません。
+
+## 運用上の注意
+
+- GASプロジェクトの編集権限は、運用に必要な管理者だけに絞ってください。
+- Script PropertiesにはSlack AppのClient Secret、Bot Token、利用者本人のSlack連携情報が保存されます。閲覧・編集できる人を最小限にしてください。
+- 利用者がログアウトすると、その利用者のSlack連携情報は削除されます。次回利用時は再度「Slackと連携する」から始めます。
+- ゲスト、Bot、削除済みユーザー、Slackbotは送信先候補から除外されます。
+- `MAX_RECIPIENTS` を大きくしすぎると、Slack APIのrate limitに当たりやすくなります。最初は `10` 程度を推奨します。
+
+## トラブルシュート
+
+| 症状 | 確認すること |
+|---|---|
+| OAuthで `bad_redirect_uri` が出る | Slack AppのRedirect URL、GASの `WEB_APP_URL`、実際に開いているURLがすべて同じ `.../exec` になっているか確認してください。 |
+| Slack連携後にエラーになる | `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` / `WEB_APP_URL` が正しいか確認してください。 |
+| ユーザー一覧が出ない | `SLACK_BOT_TOKEN` が設定されているか、Bot Token Scopesに `users:read` があるか確認してください。 |
+| 送信できない | User Token Scopesに `chat:write` と `im:write` があるか確認してください。Scopeを後から追加した場合はSlack Appを再インストールしてください。 |
+| `/dm-send` が検証エラーになる | `SLACK_VERIFICATION_TOKEN` がSlack App側のVerification Tokenと一致しているか確認してください。 |
+| コード変更が反映されない | GASで「デプロイを管理」から既存デプロイを新バージョンに更新してください。 |
+
+---
+
+## 開発者向け: clasp / gh を使う場合
+
+通常のワークスペース導入では、この章は不要です。ソース管理や自動デプロイを行う開発者向けの補足です。
+
+前提: <https://script.google.com/home/usersettings> で「Google Apps Script API」をオンにしておきます。
 
 ```bash
-# 0) ログイン（未ログインなら）
-clasp login          # Google
-gh auth login        # GitHub
-
-# 1) GASプロジェクト作成 → push → 初回デプロイ（リポジトリのルートで）
+clasp login
 clasp create --type standalone --title "Slack DM Send" --rootDir src
 clasp push -f
 clasp deploy --description "v1"
-clasp deployments    # 表示された AKfyc... が deploymentId
-#   → Web App URL = https://script.google.com/macros/s/<deploymentId>/exec
-
-# 2) Script Properties を設定（GASエディタUIが確実）
-clasp open-script    # プロジェクトの設定 → スクリプト プロパティ で登録
-
-# 3) コードを更新したときは「同じデプロイ」を上書き（URLを変えないため）
-clasp push -f
-clasp deploy -i <deploymentId> --description "update"
-
-# 4) GitHubへ公開
-git init && git add . && git commit -m "Initial commit"
-gh repo create slack-dm-send --public --source=. --remote=origin --push
+clasp deployments
 ```
 
-> **重要**: URLを固定したいので、2回目以降は必ず `clasp deploy -i <deploymentId>` で同じデプロイを更新する（`-i` 無しだと新URLが発行され、Slack側の登録URLと食い違う）。
+表示された `AKfyc...` がdeployment IDです。
 
----
+2回目以降にURLを変えず更新する場合は、同じdeployment IDを指定します。
 
-## 1. GASプロジェクト作成
-1. <https://script.google.com> で新規プロジェクトを作成。
-2. `src/` 内の `.gs` / `.html` ファイルを同名で作成し、内容を貼り付ける。
-   - `appsscript.json` は「プロジェクトの設定 → 『appsscript.json マニフェスト ファイルをエディタで表示』」を有効化して上書き。
-   - HTMLファイルは拡張子なしの名前（`Index`, `Stylesheet`, `JavaScript`）で作成。
+```bash
+clasp push -f
+clasp deploy -i <deploymentId> --description "update"
+```
 
-## 2. Slack App作成
-1. <https://api.slack.com/apps> →「Create New App」→「From scratch」。
-2. **OAuth & Permissions** で Scope を設定：
-   - Bot Token Scopes: `users:read`（任意で `chat:write`）
-   - User Token Scopes: `chat:write`, `im:write`（任意で `users:read`）
-3. **Basic Information** から `Client ID` / `Client Secret` / `Verification Token` を控える。
-   - `Verification Token` はスラッシュコマンド検証に使う（手順7）。
-4. ワークスペースにインストールし、`Bot User OAuth Token`（`xoxb-…`）を控える。
+GitHubリポジトリ作成に `gh` を使う場合は、通常のGitHub CLI手順に従ってください。ワークスペース管理者がこのツールを導入するだけなら `gh` は不要です。
 
-## 3. Web Appとしてデプロイ（先にURLを確定）
-1. GASエディタ →「デプロイ →新しいデプロイ →種類: ウェブアプリ」。
-2. 「次のユーザーとして実行: 自分」「アクセスできるユーザー: 全員」。
-3. デプロイ後の **ウェブアプリURL（`…/exec`）** を控える。
+## リポジトリ構成
 
-## 4. Slackに redirect URL を登録
-1. Slack App →「OAuth & Permissions」→「Redirect URLs」に、手順3の `…/exec` URLを**そのまま**追加して保存。
-   - ここが一致しないとOAuthが失敗する最大の原因。末尾まで完全一致させる。
-
-## 5. Script Properties を設定
-GASエディタ →「プロジェクトの設定 →スクリプト プロパティ」で以下を登録：
-
-| キー | 値 |
-|---|---|
-| `SLACK_CLIENT_ID` | Slack App の Client ID |
-| `SLACK_CLIENT_SECRET` | Client Secret |
-| `SLACK_BOT_TOKEN` | `xoxb-…`（手順2-4） |
-| `WEB_APP_URL` | 手順3の `…/exec` URL |
-| `MAX_RECIPIENTS` | `10`（任意） |
-| `SEND_INTERVAL_MS` | `1000`（任意） |
-| `SLACK_VERIFICATION_TOKEN` | `/dm-send` を使う場合は必須。手順2-3の Verification Token |
-
-> `/dm-send` は `SLACK_VERIFICATION_TOKEN` が未設定、またはtokenが不一致の場合に拒否される。`SLACK_TEAM_ID` が設定されている場合は、Slash Commandの `team_id` も一致する必要がある。
-
-## 6. 利用方法（2通り）
-
-### A. OAuth連携（推奨・セルフサービス）
-1. ウェブアプリURL（`…/exec`）を開く。
-2. 「Slackと連携する」→ Slackで許可 → 自動で送信画面へ。
-3. 送信先を選択 → 本文入力 → 確認 → 送信。
-4. ログアウトすると保存済みのSlack連携情報も削除される。次回利用時は、もう一度「Slackと連携する」から始める。
-
-### B. 手動token登録（管理者の検証用）
-本番利用では、利用者本人が「Slackと連携する」からOAuth連携する運用を推奨する。手動token登録は、管理者が動作確認や切り分けを行うための検証用フロー。
-
-1. 自分の **User OAuth Token**（`xoxp-…`）を取得（Slack App の「Install App」画面、または OAuth で発行）。
-2. Script Properties に `USER_TOKEN_<あなたのSlack user_id>` = `xoxp-…` を登録。
-   - user_id は Slack プロフィール →「メンバーIDをコピー」（`U…`）。
-3. GASエディタで一時的に次を実行してセッションURLを得る：
-   ```js
-   function makeMyLink() {
-     var uid = 'Uxxxxxxxx'; // 自分のSlack user_id
-     var sid = createSession(uid);
-     Logger.log(getWebAppUrl() + '?session=' + sid);
-   }
-   ```
-4. ログのURLを開くと送信画面に入れる。
-
-## 7. （任意）スラッシュコマンド /dm-send
-Slack内から `/dm-send` でWeb UIリンクを呼び出せるようにする。リンクを返すだけで送信処理は行わない。
-
-1. Slack App →「Slash Commands」→「Create New Command」。
-   - Command: `/dm-send`
-   - Request URL: 手順3の `…/exec` URL
-   - Short Description: 例「DM一斉送信ツールを開く」
-2. Script Properties に `SLACK_VERIFICATION_TOKEN`（手順2-3）を登録。
-3. コード変更があるため再デプロイ（「デプロイを管理 → 編集 → バージョン: 新バージョン」）。
-4. Slackで `/dm-send` を実行 → 本人にだけ表示されるリンクからツールを開く。
-
-> **検証方式の注意**: GASの `doPost(e)` はHTTPヘッダ（`X-Slack-Signature`）を読めないため、Signing SecretによるHMAC署名検証は使えない。本実装はSlashコマンドがbodyに含めるlegacy verification tokenで検証する。
-
----
-
-## 動作の要点（安全設計）
-- 送信者は必ずセッション上の `user_id` から決定。ブラウザから送信者IDは受け取らない。
-- `?session=...` は初回表示時に `sessionStorage` へ退避し、ブラウザURLから除去する。
-- 使用するtokenは `USER_TOKEN_<セッション上のuser_id>` のみ。
-- ログアウト時は `USER_TOKEN_<セッション上のuser_id>` も削除する。次回利用時は再度Slack連携が必要。
-- OAuth `state` は CacheService で発行・照合し、callbackで1回限り消費。
-- 送信ログ・本文履歴・メールアドレスは保存しない。
-- 1件ごとに `SEND_INTERVAL_MS` 待機、`ratelimited` は `Retry-After` を尊重して1回リトライ。
-- `/dm-send` はWeb UIリンクを即時返すのみで、送信処理は載せない（3秒ACK制限対応）。
-- 除外: `deleted` / `is_bot` / `USLACKBOT` / ゲスト（`is_restricted` / `is_ultra_restricted`）。
-
-## 運用上の注意
-- GASプロジェクトの編集権限は、運用に必要な管理者だけに絞る。
-- Script Properties にはSlack Appの秘密情報や利用者本人のSlack連携情報が入るため、閲覧・編集できる人を最小限にする。
-
-## トラブルシュート
-- **OAuthで `bad_redirect_uri`**: 手順4のRedirect URLと `WEB_APP_URL` が `…/exec` で完全一致しているか確認。
-- **`invalid_scope`**: User Token Scopes に `chat:write` と `im:write` があるか確認。
-- **ユーザー一覧が出ない**: `SLACK_BOT_TOKEN` 未設定、または Bot に `users:read` が無い。
-- **コード変更が反映されない**: 「デプロイを管理 →編集 →バージョン: 新バージョン」で再デプロイ。
+```text
+.
+├── README.md
+└── src/
+    ├── appsscript.json
+    ├── Code.gs
+    ├── Config.gs
+    ├── Slack.gs
+    ├── OAuth.gs
+    ├── Session.gs
+    ├── Users.gs
+    ├── Send.gs
+    ├── Command.gs
+    ├── Index.html
+    ├── Stylesheet.html
+    └── JavaScript.html
+```
