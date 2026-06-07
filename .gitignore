@@ -1,0 +1,11 @@
+docs/
+
+# macOS
+.DS_Store
+
+# clasp（使う場合）
+.clasp.json
+.clasprc.json
+
+# logs / tmp
+*.log

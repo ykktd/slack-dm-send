@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <?!= include('Stylesheet'); ?>
+</head>
+<body>
+  <div id="app">
+    <header class="hd">
+      <h1>Slack DM 一斉送信</h1>
+      <p class="sub">あなた本人として、複数人に個別DMを送ります。</p>
+    </header>
+
+    <!-- 画面1: ログイン/連携 -->
+    <section id="login" class="screen">
+      <div class="card">
+        <h2>はじめに</h2>
+        <ol class="howto">
+          <li>Slackと連携する（あなた本人のトークンを登録）</li>
+          <li>送信対象を選ぶ</li>
+          <li>本文を入力する</li>
+          <li>確認して送信する</li>
+        </ol>
+        <ul class="notes">
+          <li>他人として送信することはできません。送信者はあなた本人です。</li>
+          <li>送信ログは保存されません。メールアドレスは扱いません。</li>
+        </ul>
+        <a id="connectBtn" class="btn primary" href="#">Slackと連携する</a>
+      </div>
+    </section>
+
+    <!-- 画面2: 送信内容入力 -->
+    <section id="compose" class="screen hidden">
+      <div class="card">
+        <div class="row between">
+          <h2>送信先を選ぶ</h2>
+          <span id="selCount" class="pill">0 人選択</span>
+        </div>
+        <input id="search" class="input" type="text" placeholder="名前・表示名・ユーザー名・IDで検索">
+        <div id="userList" class="userlist"></div>
+      </div>
+
+      <div class="card">
+        <h2>本文</h2>
+        <div class="toolbar">
+          <button type="button" id="boldBtn" class="tb">太字</button>
+          <button type="button" id="linkBtn" class="tb">リンク</button>
+          <span class="hint">太字とリンクのみ対応</span>
+        </div>
+        <textarea id="message" class="input area" rows="6" placeholder="お疲れ様です。〇〇について確認をお願いします。"></textarea>
+        <div class="prevwrap">
+          <div class="prevlabel">プレビュー</div>
+          <div id="preview" class="preview"></div>
+        </div>
+        <div class="row end">
+          <button type="button" id="toConfirm" class="btn primary">確認画面へ</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 画面3: 送信前確認 -->
+    <section id="confirm" class="screen hidden">
+      <div class="card">
+        <h2>送信前の確認</h2>
+        <p>あなた本人として、以下の内容を個別DM送信します。</p>
+        <dl class="kv">
+          <dt>送信者</dt><dd id="cfSender">あなた本人</dd>
+          <dt>送信先</dt><dd id="cfCount"></dd>
+        </dl>
+        <div class="prevlabel">送信先一覧</div>
+        <div id="cfList" class="cflist"></div>
+        <div class="prevlabel">本文</div>
+        <div id="cfPreview" class="preview"></div>
+
+        <ul class="notes">
+          <li>このメッセージはBotではなく、あなた本人として送信されます。</li>
+          <li>送信ログは保存されません。送信後に内容を確認することはできません。</li>
+          <li>「自分宛へテスト送信」で先に自分のDMにだけ送り、見え方を確認できます。</li>
+        </ul>
+        <p id="testStatus" class="hint"></p>
+        <div class="row between">
+          <button type="button" id="backToCompose" class="btn ghost">戻る</button>
+          <div class="row">
+            <button type="button" id="testSendBtn" class="btn ghost">自分宛へテスト送信</button>
+            <button type="button" id="sendBtn" class="btn primary">本人としてDM送信する</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 画面4: 送信結果 -->
+    <section id="result" class="screen hidden">
+      <div class="card">
+        <h2>送信結果</h2>
+        <div id="rsSummary" class="summary"></div>
+        <div id="rsFailures"></div>
+        <div class="row between">
+          <button type="button" id="again" class="btn ghost">もう一度送る</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="toast" class="toast hidden"></div>
+    <div id="overlay" class="overlay hidden"><div class="spinner"></div><span id="overlayMsg">処理中…</span></div>
+  </div>
+
+  <script>
+    window.__INITIAL_STATE__ = <?!= initialState ?>;
+  </script>
+  <?!= include('JavaScript'); ?>
+</body>
+</html>

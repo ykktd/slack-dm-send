@@ -1,0 +1,201 @@
+<script>
+(function () {
+  'use strict';
+
+  var S = window.__INITIAL_STATE__ || {};
+  var state = { session: S.session || '', users: [], selected: {}, max: 10 };
+
+  // ---- DOM ヘルパ ----
+  function $(id) { return document.getElementById(id); }
+  function show(id) {
+    ['login', 'compose', 'confirm', 'result'].forEach(function (s) {
+      $(s).classList.toggle('hidden', s !== id);
+    });
+    window.scrollTo(0, 0);
+  }
+  function esc(t) {
+    return String(t).replace(/[<>&]/g, function (c) {
+      return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c];
+    });
+  }
+  function toast(msg) {
+    var el = $('toast'); el.textContent = msg; el.classList.remove('hidden');
+    setTimeout(function () { el.classList.add('hidden'); }, 2600);
+  }
+  function overlay(on, msg) {
+    $('overlayMsg').textContent = msg || '処理中…';
+    $('overlay').classList.toggle('hidden', !on);
+  }
+
+  // ---- mrkdwn プレビュー（太字・リンクのみ） ----
+  function renderMrkdwn(text) {
+    var html = esc(text);
+    html = html.replace(/&lt;(https?:\/\/[^|&]+)\|([^&]+)&gt;/g,
+      '<a href="$1" target="_blank" rel="noopener">$2</a>');
+    html = html.replace(/&lt;(https?:\/\/[^|&]+)&gt;/g,
+      '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    html = html.replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
+    return html.replace(/\n/g, '<br>');
+  }
+  function updatePreview() { $('preview').innerHTML = renderMrkdwn($('message').value); }
+
+  // ---- ユーザー一覧 ----
+  function renderUsers(filter) {
+    var f = (filter || '').trim().toLowerCase();
+    var box = $('userList');
+    box.innerHTML = '';
+    var matched = state.users.filter(function (u) {
+      if (!f) return true;
+      return [u.displayName, u.realName, u.name, u.id]
+        .join(' ').toLowerCase().indexOf(f) !== -1;
+    });
+    if (matched.length === 0) {
+      box.innerHTML = '<div class="uitem"><span class="id">該当なし</span></div>';
+      return;
+    }
+    matched.forEach(function (u) {
+      var row = document.createElement('label');
+      row.className = 'uitem';
+      var checked = state.selected[u.id] ? 'checked' : '';
+      var img = u.image48 ? '<img src="' + esc(u.image48) + '" alt="">' : '<img alt="">';
+      row.innerHTML = '<input type="checkbox" data-id="' + esc(u.id) + '" ' + checked + '>' +
+        img + '<div class="meta"><div class="nm">' + esc(u.label) +
+        '</div><div class="id">' + esc(u.name ? '@' + u.name + ' / ' : '') + esc(u.id) +
+        '</div></div>';
+      row.querySelector('input').addEventListener('change', function (e) {
+        if (e.target.checked) state.selected[u.id] = u;
+        else delete state.selected[u.id];
+        updateSelCount();
+      });
+      box.appendChild(row);
+    });
+  }
+  function updateSelCount() {
+    $('selCount').textContent = Object.keys(state.selected).length + ' 人選択';
+  }
+
+  // ---- ツールバー（太字・リンク挿入） ----
+  function wrapSelection(before, after) {
+    var ta = $('message');
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    var sel = ta.value.slice(s, e);
+    ta.value = ta.value.slice(0, s) + before + sel + after + ta.value.slice(e);
+    ta.focus();
+    ta.selectionStart = s + before.length;
+    ta.selectionEnd = e + before.length;
+    updatePreview();
+  }
+
+  // ---- 確認画面 ----
+  function buildConfirm() {
+    var ids = Object.keys(state.selected);
+    if (ids.length === 0) { toast('送信先を選んでください'); return false; }
+    if (ids.length > state.max) { toast('送信先は最大' + state.max + '人までです'); return false; }
+    if (!$('message').value.trim()) { toast('本文を入力してください'); return false; }
+
+    $('cfCount').textContent = ids.length + ' 名';
+    $('cfList').innerHTML = ids.map(function (id) {
+      return '<div>' + esc(state.selected[id].label) + '</div>';
+    }).join('');
+    $('cfPreview').innerHTML = renderMrkdwn($('message').value);
+    $('testStatus').textContent = '';
+    return true;
+  }
+
+  // ---- 自分宛てテスト送信（独立アクション。本送信はしない）----
+  function doTestSend() {
+    var msg = $('message').value;
+    $('testSendBtn').disabled = true;
+    $('testStatus').textContent = '';
+    overlay(true, '自分宛てに送信中…');
+    google.script.run
+      .withSuccessHandler(function (r) {
+        overlay(false); $('testSendBtn').disabled = false;
+        if (!r || !r.ok) { $('testStatus').textContent = '失敗: ' + ((r && r.error) || '不明'); return; }
+        $('testStatus').textContent = '✓ 自分宛てに送信しました。SlackのDMで確認してください。';
+      })
+      .withFailureHandler(function (err) {
+        overlay(false); $('testSendBtn').disabled = false;
+        $('testStatus').textContent = 'エラー: ' + err.message;
+      })
+      .apiSendTestToSelf(state.session, msg);
+  }
+
+  // ---- 本送信 ----
+  function doSend() {
+    var ids = Object.keys(state.selected);
+    var msg = $('message').value;
+    $('sendBtn').disabled = true;
+    overlay(true, '送信しています…');
+    google.script.run
+      .withSuccessHandler(function (r) {
+        overlay(false); $('sendBtn').disabled = false;
+        if (!r || !r.ok) { toast((r && r.error) || '送信に失敗しました'); return; }
+        showResult(r);
+      })
+      .withFailureHandler(function (err) {
+        overlay(false); $('sendBtn').disabled = false;
+        toast('送信エラー: ' + err.message);
+      })
+      .apiSendDm(state.session, ids, msg);
+  }
+  function showResult(r) {
+    var html = '<span class="ok">成功 ' + r.successCount + ' 件</span>';
+    if (r.failures.length) html += ' / <span class="ng">失敗 ' + r.failures.length + ' 件</span>';
+    $('rsSummary').innerHTML = html;
+    $('rsFailures').innerHTML = r.failures.map(function (f) {
+      var u = state.selected[f.userId];
+      return '<div class="failrow">' + esc((u ? u.label : f.userId)) + ' : ' + esc(f.error) + '</div>';
+    }).join('');
+    show('result');
+  }
+
+  // ---- 起動 ----
+  function bootstrap() {
+    overlay(true, '読み込み中…');
+    google.script.run
+      .withSuccessHandler(function (r) {
+        overlay(false);
+        if (!r || !r.ok) { toast((r && r.error) || '読み込みに失敗しました'); show('login'); return; }
+        state.users = r.users; state.max = r.maxRecipients;
+        $('cfSender').textContent = r.me.label + '（あなた本人）';
+        renderUsers(''); updateSelCount(); updatePreview();
+        show('compose');
+      })
+      .withFailureHandler(function (err) { overlay(false); toast('読み込みエラー: ' + err.message); show('login'); })
+      .apiBootstrap(state.session);
+  }
+
+  // ---- イベント登録 ----
+  function bindEvents() {
+    $('connectBtn').href = S.authUrl || '#';
+    $('search').addEventListener('input', function (e) { renderUsers(e.target.value); });
+    $('message').addEventListener('input', updatePreview);
+    $('boldBtn').addEventListener('click', function () { wrapSelection('*', '*'); });
+    $('linkBtn').addEventListener('click', function () {
+      var url = window.prompt('リンク先URL（https://…）');
+      if (!url) return;
+      var ta = $('message');
+      var label = ta.value.slice(ta.selectionStart, ta.selectionEnd) || 'リンク';
+      wrapSelection('<' + url + '|', '>');
+      // 表示文字が未選択だった場合の補完
+      if (ta.value.indexOf('<' + url + '|>') !== -1) {
+        ta.value = ta.value.replace('<' + url + '|>', '<' + url + '|' + label + '>');
+        updatePreview();
+      }
+    });
+    $('toConfirm').addEventListener('click', function () { if (buildConfirm()) show('confirm'); });
+    $('backToCompose').addEventListener('click', function () { show('compose'); });
+    $('testSendBtn').addEventListener('click', doTestSend);
+    $('sendBtn').addEventListener('click', doSend);
+    $('again').addEventListener('click', function () {
+      state.selected = {}; $('message').value = '';
+      renderUsers(''); updateSelCount(); updatePreview(); show('compose');
+    });
+  }
+
+  bindEvents();
+  if (S.connected) bootstrap();
+  else show('login');
+})();
+</script>
