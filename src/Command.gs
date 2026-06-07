@@ -14,13 +14,18 @@
 function handleSlashCommand(e) {
   const p = (e && e.parameter) || {};
 
-  const expected = getProp('SLACK_VERIFICATION_TOKEN');
-  if (expected && p.token !== expected) {
+  const expected = String(getProp('SLACK_VERIFICATION_TOKEN') || '').trim();
+  if (!expected || p.token !== expected) {
     return jsonResponse({ response_type: 'ephemeral', text: 'リクエスト検証に失敗しました。' });
   }
 
   if (p.command !== '/dm-send') {
     return jsonResponse({ response_type: 'ephemeral', text: '不明なコマンドです。' });
+  }
+
+  const expectedTeamId = String(getProp('SLACK_TEAM_ID') || '').trim();
+  if (expectedTeamId && p.team_id !== expectedTeamId) {
+    return jsonResponse({ response_type: 'ephemeral', text: 'リクエスト検証に失敗しました。' });
   }
 
   const url = getWebAppUrl();
