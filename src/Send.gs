@@ -18,17 +18,19 @@ function resolveSender(sessionId) {
  * @return {Object} { ok } または { ok:false, error }
  */
 function apiSendTestToSelf(sessionId, message) {
-  const s = resolveSender(sessionId);
-  if (s.error) return { ok: false, error: s.error };
+  return guardApi('apiSendTestToSelf', function () {
+    const s = resolveSender(sessionId);
+    if (s.error) return { ok: false, error: s.error };
 
-  const senderError = validateAllowedSender(s.senderUserId, indexUsersById(getUserList()));
-  if (senderError) return { ok: false, error: senderError };
+    const senderError = validateAllowedSender(s.senderUserId, indexUsersById(getUserList()));
+    if (senderError) return { ok: false, error: senderError };
 
-  const text = String(message || '').trim();
-  if (!text) return { ok: false, error: '本文が空です。' };
+    const text = String(message || '').trim();
+    if (!text) return { ok: false, error: '本文が空です。' };
 
-  const r = sendOneDm(s.userToken, s.senderUserId, text);
-  return r.ok ? { ok: true } : { ok: false, error: r.error };
+    const r = sendOneDm(s.userToken, s.senderUserId, text);
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  });
 }
 
 /**
@@ -39,44 +41,47 @@ function apiSendTestToSelf(sessionId, message) {
  * @return {Object} { ok, successCount, failures }
  */
 function apiSendDm(sessionId, recipientUserIds, message) {
-  const s = resolveSender(sessionId);
-  if (s.error) return { ok: false, error: s.error };
+  return guardApi('apiSendDm', function () {
+    const s = resolveSender(sessionId);
+    if (s.error) return { ok: false, error: s.error };
 
-  const text = String(message || '').trim();
-  if (!text) return { ok: false, error: '本文が空です。' };
+    // 送信者の利用資格は最優先で確認し、非対象ユーザーは最も早く弾く（fail-closed）。
+    const usersById = indexUsersById(getUserList());
+    const senderError = validateAllowedSender(s.senderUserId, usersById);
+    if (senderError) return { ok: false, error: senderError };
 
-  const recipients = dedupe(recipientUserIds).filter(Boolean);
-  if (recipients.length === 0) return { ok: false, error: '送信先が選択されていません。' };
+    const text = String(message || '').trim();
+    if (!text) return { ok: false, error: '本文が空です。' };
 
-  const usersById = indexUsersById(getUserList());
-  const senderError = validateAllowedSender(s.senderUserId, usersById);
-  if (senderError) return { ok: false, error: senderError };
+    const recipients = dedupe(recipientUserIds).filter(Boolean);
+    if (recipients.length === 0) return { ok: false, error: '送信先が選択されていません。' };
 
-  const disallowedRecipients = recipients.filter((id) => !usersById[id]);
-  if (disallowedRecipients.length > 0) {
-    return {
-      ok: false,
-      error: `許可されていない送信先が含まれています: ${disallowedRecipients.join(', ')}。送信先を選び直してください。`,
-    };
-  }
+    const disallowedRecipients = recipients.filter((id) => !usersById[id]);
+    if (disallowedRecipients.length > 0) {
+      return {
+        ok: false,
+        error: `許可されていない送信先が含まれています: ${disallowedRecipients.join(', ')}。送信先を選び直してください。`,
+      };
+    }
 
-  const max = getMaxRecipients();
-  if (recipients.length > max) {
-    return { ok: false, error: `送信先は最大${max}人までです（選択: ${recipients.length}人）。` };
-  }
+    const max = getMaxRecipients();
+    if (recipients.length > max) {
+      return { ok: false, error: `送信先は最大${max}人までです（選択: ${recipients.length}人）。` };
+    }
 
-  const interval = getSendIntervalMs();
-  let successCount = 0;
-  const failures = [];
+    const interval = getSendIntervalMs();
+    let successCount = 0;
+    const failures = [];
 
-  recipients.forEach((recipientId, i) => {
-    const r = sendOneDm(s.userToken, recipientId, text);
-    if (r.ok) successCount++;
-    else failures.push({ userId: recipientId, error: r.error });
-    if (i < recipients.length - 1 && interval > 0) Utilities.sleep(interval);
+    recipients.forEach((recipientId, i) => {
+      const r = sendOneDm(s.userToken, recipientId, text);
+      if (r.ok) successCount++;
+      else failures.push({ userId: recipientId, error: r.error });
+      if (i < recipients.length - 1 && interval > 0) Utilities.sleep(interval);
+    });
+
+    return { ok: true, successCount: successCount, failures: failures };
   });
-
-  return { ok: true, successCount: successCount, failures: failures };
 }
 
 /** 1人に送信。conversations.open → chat.postMessage。429 は1回だけリトライ。 */

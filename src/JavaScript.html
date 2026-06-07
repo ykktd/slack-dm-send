@@ -269,6 +269,7 @@
 
   // ---- 本送信 ----
   function doSend() {
+    $('testStatus').textContent = '';
     runWithOverlay('sendBtn', '送信しています…',
       function (run) { run.apiSendDm(state.session, Object.keys(state.selected), $('message').value); },
       function (r) { if (!r || !r.ok) { toast((r && r.error) || '送信に失敗しました'); return; } showResult(r); },

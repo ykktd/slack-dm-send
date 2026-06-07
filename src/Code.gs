@@ -95,24 +95,40 @@ function include(filename) {
 }
 
 /**
+ * APIハンドラの実行中に発生した想定外の例外を握り、汎用メッセージに置き換える。
+ * 内部のエラー詳細（不足プロパティ名やSlackの生エラー等）はサーバログにのみ残し、
+ * クライアントには漏らさない。検証エラーは各ハンドラが {ok:false} で返すためここには来ない。
+ */
+function guardApi(label, fn) {
+  try {
+    return fn();
+  } catch (e) {
+    console.error(`${label} failed: ${(e && e.stack) || e}`);
+    throw new Error('サーバ側でエラーが発生しました。時間をおいて再試行してください。');
+  }
+}
+
+/**
  * 送信画面の初期化データを返す（クライアントから呼ぶ）。
  * 送信者本人情報とユーザー一覧をまとめて返す。
  */
 function apiBootstrap(sessionId) {
-  const s = resolveSender(sessionId);
-  if (s.error) return { ok: false, error: s.error };
+  return guardApi('apiBootstrap', function () {
+    const s = resolveSender(sessionId);
+    if (s.error) return { ok: false, error: s.error };
 
-  const users = getUserList();
-  const usersById = indexUsersById(users);
-  const senderError = validateAllowedSender(s.senderUserId, usersById);
-  if (senderError) return { ok: false, error: senderError };
+    const users = getUserList();
+    const usersById = indexUsersById(users);
+    const senderError = validateAllowedSender(s.senderUserId, usersById);
+    if (senderError) return { ok: false, error: senderError };
 
-  return {
-    ok: true,
-    me: usersById[s.senderUserId],
-    users: users,
-    maxRecipients: getMaxRecipients(),
-  };
+    return {
+      ok: true,
+      me: usersById[s.senderUserId],
+      users: users,
+      maxRecipients: getMaxRecipients(),
+    };
+  });
 }
 
 /** クライアント側のログアウト。保存済みSlack連携情報も削除し、Web UIセッションを破棄する。 */
