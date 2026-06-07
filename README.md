@@ -137,6 +137,7 @@ Slack内から `/dm-send` でWeb UIリンクを呼び出せるようにする。
 
 ## 動作の要点（安全設計）
 - 送信者は必ずセッション上の `user_id` から決定。ブラウザから送信者IDは受け取らない。
+- `?session=...` は初回表示時に `sessionStorage` へ退避し、ブラウザURLから除去する。
 - 使用するtokenは `USER_TOKEN_<セッション上のuser_id>` のみ。
 - OAuth `state` は CacheService で発行・照合し、callbackで1回限り消費。
 - 送信ログ・本文履歴・メールアドレスは保存しない。

@@ -3,7 +3,73 @@
   'use strict';
 
   var S = window.__INITIAL_STATE__ || {};
-  var state = { session: S.session || '', users: [], selected: {}, max: 10 };
+  var SESSION_KEY = 'slackDmSend.session';
+
+  function hasUrlSession() {
+    return /(?:^|[?&])session=/.test(window.location.search);
+  }
+  function storeSession(session) {
+    try {
+      if (session) window.sessionStorage.setItem(SESSION_KEY, session);
+      else window.sessionStorage.removeItem(SESSION_KEY);
+    } catch (err) {
+      // sessionStorage が使えない環境では、この表示中の state だけで扱う。
+    }
+  }
+  function readStoredSession() {
+    try {
+      return window.sessionStorage.getItem(SESSION_KEY) || '';
+    } catch (err) {
+      return '';
+    }
+  }
+  function clearSession() {
+    state.session = '';
+    storeSession('');
+    removeSessionFromUrl(false);
+  }
+  function removeSessionFromUrl(force) {
+    if (!force && !hasUrlSession()) return;
+    removeSessionFromWindowUrl();
+    removeSessionFromGasUrl();
+  }
+  function removeSessionFromWindowUrl() {
+    if (!hasUrlSession() || !window.history || !window.history.replaceState) return;
+    try {
+      var url = new URL(window.location.href);
+      url.searchParams.delete('session');
+      window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+    } catch (err) {
+      // URL API が使えない場合は現状維持。セッション自体は storage/state に退避済み。
+    }
+  }
+  function removeSessionFromGasUrl() {
+    if (!window.google || !google.script || !google.script.url || !google.script.history) return;
+    try {
+      google.script.url.getLocation(function (location) {
+        var source = (location && (location.parameters || location.parameter)) || {};
+        var params = {};
+        Object.keys(source).forEach(function (key) {
+          if (key !== 'session') params[key] = source[key];
+        });
+        google.script.history.replace({}, params, (location && location.hash) || '');
+      });
+    } catch (err) {
+      // GAS履歴APIが使えない場合は window.history の結果に任せる。
+    }
+  }
+  function initSession() {
+    var serverSession = S.session || '';
+    if (serverSession) {
+      storeSession(serverSession);
+      removeSessionFromUrl(true);
+      return serverSession;
+    }
+    if (hasUrlSession()) removeSessionFromUrl(true);
+    return readStoredSession();
+  }
+
+  var state = { session: initSession(), users: [], selected: {}, max: 10 };
 
   // ---- DOM ヘルパ ----
   function $(id) { return document.getElementById(id); }
@@ -11,6 +77,7 @@
     ['login', 'compose', 'confirm', 'result'].forEach(function (s) {
       $(s).classList.toggle('hidden', s !== id);
     });
+    $('logoutBtn').classList.toggle('hidden', !state.session || id === 'login');
     window.scrollTo(0, 0);
   }
   function esc(t) {
@@ -156,7 +223,12 @@
     google.script.run
       .withSuccessHandler(function (r) {
         overlay(false);
-        if (!r || !r.ok) { toast((r && r.error) || '読み込みに失敗しました'); show('login'); return; }
+        if (!r || !r.ok) {
+          clearSession();
+          toast((r && r.error) || '読み込みに失敗しました');
+          show('login');
+          return;
+        }
         state.users = r.users; state.max = r.maxRecipients;
         $('cfSender').textContent = r.me.label + '（あなた本人）';
         renderUsers(''); updateSelCount(); updatePreview();
@@ -166,9 +238,29 @@
       .apiBootstrap(state.session);
   }
 
+  function logout() {
+    var session = state.session;
+    clearSession();
+    if (!session) { show('login'); return; }
+    overlay(true, 'セッションを破棄中…');
+    google.script.run
+      .withSuccessHandler(function () {
+        overlay(false);
+        toast('セッションを破棄しました');
+        show('login');
+      })
+      .withFailureHandler(function () {
+        overlay(false);
+        toast('セッションを破棄しました');
+        show('login');
+      })
+      .apiLogout(session);
+  }
+
   // ---- イベント登録 ----
   function bindEvents() {
     $('connectBtn').href = S.authUrl || '#';
+    $('logoutBtn').addEventListener('click', logout);
     $('search').addEventListener('input', function (e) { renderUsers(e.target.value); });
     $('message').addEventListener('input', updatePreview);
     $('boldBtn').addEventListener('click', function () { wrapSelection('*', '*'); });
@@ -195,7 +287,7 @@
   }
 
   bindEvents();
-  if (S.connected) bootstrap();
+  if (state.session) bootstrap();
   else show('login');
 })();
 </script>

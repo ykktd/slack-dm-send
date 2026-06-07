@@ -3,7 +3,7 @@
  *
  * doGet の分岐:
  *   1) ?code=&state=  → OAuth callback。token保存→セッション発行→送信画面を直接描画。
- *   2) ?session=      → セッション検証。有効なら送信画面、無効ならログイン画面。
+ *   2) ?session=      → セッション検証。有効ならクライアント側で退避してURLから除去。
  */
 
 /**
@@ -20,7 +20,7 @@ function doGet(e) {
   // 1) OAuth callback
   //    GASのiframeサンドボックスは user activation 無しの top 遷移を禁止するため、
   //    自動遷移はせず、利用者がクリックする「ツールを開く」ボタンを表示する。
-  //    遷移先はクリーンな ?session= URL なので、その後のリロードも正常に動く。
+  //    遷移先の ?session= は初回表示時にクライアント側で退避し、URLから除去する。
   if (p.code && p.state) {
     try {
       const { sessionId } = handleOAuthCallback(p.code, p.state);
@@ -52,8 +52,8 @@ function renderApp(state) {
 }
 
 /**
- * OAuth連携完了ページ。クリーンな ?session= URL へ向かう「ツールを開く」ボタンを表示。
- * ボタンのクリック（user activation）でトップ遷移が許可され、遷移先はリロード可能なURLになる。
+ * OAuth連携完了ページ。セッション受け渡し用の ?session= URL へ向かう「ツールを開く」ボタンを表示。
+ * ボタンのクリック（user activation）でトップ遷移が許可され、遷移先でURLから session を除去する。
  */
 function renderOAuthSuccess(sessionId) {
   const url = `${getWebAppUrl()}?session=${encodeURIComponent(sessionId)}`;
@@ -113,4 +113,10 @@ function apiBootstrap(sessionId) {
     users: users,
     maxRecipients: getMaxRecipients(),
   };
+}
+
+/** クライアント側のログアウト相当。Slack連携自体は解除せず、Web UIセッションだけ破棄する。 */
+function apiLogout(sessionId) {
+  destroySession(sessionId);
+  return { ok: true };
 }

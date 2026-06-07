@@ -1,7 +1,8 @@
 /**
  * Session.gs — Web UI セッション管理。
  * GAS は HTTP-only クッキーを発行できないため、ランダムなセッションIDを
- * URL引数で持ち回る。実体は CacheService に置き、TTLで自動失効させる。
+ * 初回URL引数で受け渡し、クライアント側で sessionStorage に退避する。
+ * 実体は CacheService に置き、TTLで自動失効させる。
  */
 
 /** セッションを発行し、Slack user_id を紐づける。戻り値はセッションID。 */
