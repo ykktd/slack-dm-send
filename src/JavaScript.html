@@ -106,50 +106,73 @@
     }
     return '';
   }
-  function appendTextWithBold(parent, text) {
-    var source = String(text || '');
-    var re = /\*([^*\n]+)\*/g;
-    var last = 0;
-    var match;
-    while ((match = re.exec(source)) !== null) {
-      if (match.index > last) {
-        parent.appendChild(document.createTextNode(source.slice(last, match.index)));
-      }
-      var strong = document.createElement('strong');
-      strong.appendChild(document.createTextNode(match[1]));
-      parent.appendChild(strong);
-      last = re.lastIndex;
-    }
-    if (last < source.length) parent.appendChild(document.createTextNode(source.slice(last)));
-  }
-  function appendSlackLink(parent, token) {
+  function parseSlackLink(token) {
     var separator = token.indexOf('|');
     var rawUrl = separator === -1 ? token : token.slice(0, separator);
     var label = separator === -1 ? rawUrl : token.slice(separator + 1);
     var href = previewUrl(rawUrl);
-    if (!href) return false;
+    return href ? { href: href, label: label } : null;
+  }
+  function findNextToken(source, start, options) {
+    var found = null;
+    var match;
 
+    if (options.allowBold) {
+      var boldRe = /\*([^*\n]+)\*/g;
+      boldRe.lastIndex = start;
+      match = boldRe.exec(source);
+      if (match) {
+        found = { type: 'bold', index: match.index, end: boldRe.lastIndex, text: match[1] };
+      }
+    }
+
+    if (options.allowLinks) {
+      var linkRe = /<([^<>]+)>/g;
+      linkRe.lastIndex = start;
+      while ((match = linkRe.exec(source)) !== null) {
+        var link = parseSlackLink(match[1]);
+        if (!link) continue;
+        if (!found || match.index < found.index) {
+          found = { type: 'link', index: match.index, end: linkRe.lastIndex, link: link };
+        }
+        break;
+      }
+    }
+
+    return found;
+  }
+  function appendSlackLink(parent, link) {
     var a = document.createElement('a');
-    a.href = href;
+    a.href = link.href;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
-    a.appendChild(document.createTextNode(label));
+    appendMrkdwn(a, link.label, { allowBold: true, allowLinks: false });
     parent.appendChild(a);
-    return true;
+  }
+  function appendMrkdwn(parent, text, options) {
+    var source = String(text || '');
+    var opts = options || { allowBold: true, allowLinks: true };
+    var cursor = 0;
+    var token;
+    while ((token = findNextToken(source, cursor, opts)) !== null) {
+      if (token.index > cursor) {
+        parent.appendChild(document.createTextNode(source.slice(cursor, token.index)));
+      }
+
+      if (token.type === 'bold') {
+        var strong = document.createElement('strong');
+        appendMrkdwn(strong, token.text, { allowBold: false, allowLinks: opts.allowLinks });
+        parent.appendChild(strong);
+      } else {
+        appendSlackLink(parent, token.link);
+      }
+      cursor = token.end;
+    }
+    if (cursor < source.length) parent.appendChild(document.createTextNode(source.slice(cursor)));
   }
   function renderMrkdwn(text) {
-    var source = String(text || '');
     var fragment = document.createDocumentFragment();
-    var re = /<([^<>]+)>/g;
-    var last = 0;
-    var match;
-    while ((match = re.exec(source)) !== null) {
-      if (!previewUrl(match[1].split('|')[0])) continue;
-      appendTextWithBold(fragment, source.slice(last, match.index));
-      appendSlackLink(fragment, match[1]);
-      last = re.lastIndex;
-    }
-    appendTextWithBold(fragment, source.slice(last));
+    appendMrkdwn(fragment, text, { allowBold: true, allowLinks: true });
     return fragment;
   }
   function renderPreview(target, text) {
