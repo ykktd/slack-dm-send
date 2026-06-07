@@ -99,25 +99,17 @@ function include(filename) {
  * 送信者本人情報とユーザー一覧をまとめて返す。
  */
 function apiBootstrap(sessionId) {
-  const senderUserId = getUserIdFromSession(sessionId);
-  if (!senderUserId) return { ok: false, error: 'セッションが無効です。再連携してください。' };
-  if (!getUserToken(senderUserId)) {
-    return { ok: false, error: 'Slack連携が見つかりません。先に連携してください。' };
-  }
+  const s = resolveSender(sessionId);
+  if (s.error) return { ok: false, error: s.error };
 
   const users = getUserList();
   const usersById = indexUsersById(users);
-  const me = usersById[senderUserId];
-  if (!me) {
-    return {
-      ok: false,
-      error: '送信者がこのツールの利用対象ユーザーではありません。通常ユーザー以上のサークルメンバーで連携してください。',
-    };
-  }
+  const senderError = validateAllowedSender(s.senderUserId, usersById);
+  if (senderError) return { ok: false, error: senderError };
 
   return {
     ok: true,
-    me: me,
+    me: usersById[s.senderUserId],
     users: users,
     maxRecipients: getMaxRecipients(),
   };

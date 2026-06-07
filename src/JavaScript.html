@@ -69,7 +69,7 @@
     return readStoredSession();
   }
 
-  var state = { session: initSession(), users: [], selected: {}, max: 10 };
+  var state = { session: initSession(), users: [], selected: {}, max: 0 };
 
   // ---- DOM ヘルパ ----
   function $(id) { return document.getElementById(id); }
@@ -244,42 +244,35 @@
     return true;
   }
 
+  // google.script.run 呼び出しの共通枠（ボタン無効化・オーバーレイ・後始末）。
+  function runWithOverlay(btnId, overlayMsg, invoke, onSuccess, onError) {
+    $(btnId).disabled = true;
+    overlay(true, overlayMsg);
+    var finish = function () { overlay(false); $(btnId).disabled = false; };
+    invoke(google.script.run
+      .withSuccessHandler(function (r) { finish(); onSuccess(r); })
+      .withFailureHandler(function (err) { finish(); onError(err); }));
+  }
+
   // ---- 自分宛てテスト送信（独立アクション。本送信はしない）----
   function doTestSend() {
-    var msg = $('message').value;
-    $('testSendBtn').disabled = true;
     $('testStatus').textContent = '';
-    overlay(true, '自分宛てに送信中…');
-    google.script.run
-      .withSuccessHandler(function (r) {
-        overlay(false); $('testSendBtn').disabled = false;
-        if (!r || !r.ok) { $('testStatus').textContent = '失敗: ' + ((r && r.error) || '不明'); return; }
-        $('testStatus').textContent = '✓ 自分宛てに送信しました。SlackのDMで確認してください。';
-      })
-      .withFailureHandler(function (err) {
-        overlay(false); $('testSendBtn').disabled = false;
-        $('testStatus').textContent = 'エラー: ' + err.message;
-      })
-      .apiSendTestToSelf(state.session, msg);
+    runWithOverlay('testSendBtn', '自分宛てに送信中…',
+      function (run) { run.apiSendTestToSelf(state.session, $('message').value); },
+      function (r) {
+        $('testStatus').textContent = (!r || !r.ok)
+          ? '失敗: ' + ((r && r.error) || '不明')
+          : '✓ 自分宛てに送信しました。SlackのDMで確認してください。';
+      },
+      function (err) { $('testStatus').textContent = 'エラー: ' + err.message; });
   }
 
   // ---- 本送信 ----
   function doSend() {
-    var ids = Object.keys(state.selected);
-    var msg = $('message').value;
-    $('sendBtn').disabled = true;
-    overlay(true, '送信しています…');
-    google.script.run
-      .withSuccessHandler(function (r) {
-        overlay(false); $('sendBtn').disabled = false;
-        if (!r || !r.ok) { toast((r && r.error) || '送信に失敗しました'); return; }
-        showResult(r);
-      })
-      .withFailureHandler(function (err) {
-        overlay(false); $('sendBtn').disabled = false;
-        toast('送信エラー: ' + err.message);
-      })
-      .apiSendDm(state.session, ids, msg);
+    runWithOverlay('sendBtn', '送信しています…',
+      function (run) { run.apiSendDm(state.session, Object.keys(state.selected), $('message').value); },
+      function (r) { if (!r || !r.ok) { toast((r && r.error) || '送信に失敗しました'); return; } showResult(r); },
+      function (err) { toast('送信エラー: ' + err.message); });
   }
   function showResult(r) {
     var html = '<span class="ok">成功 ' + r.successCount + ' 件</span>';
@@ -319,18 +312,8 @@
     clearSession();
     if (!session) { show('login'); return; }
     overlay(true, 'ログアウト中…');
-    google.script.run
-      .withSuccessHandler(function () {
-        overlay(false);
-        toast('ログアウトしました');
-        show('login');
-      })
-      .withFailureHandler(function () {
-        overlay(false);
-        toast('ログアウトしました');
-        show('login');
-      })
-      .apiLogout(session);
+    var done = function () { overlay(false); toast('ログアウトしました'); show('login'); };
+    google.script.run.withSuccessHandler(done).withFailureHandler(done).apiLogout(session);
   }
 
   // ---- イベント登録 ----

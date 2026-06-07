@@ -9,7 +9,7 @@
  * @param {string} token Bot or User token
  * @param {Object} payload リクエストボディ（JSON）
  * @param {string} contentType 'json'(既定) | 'form'
- * @return {Object} パース済みレスポンス（{ok, ...} or {ok:false, error, _httpStatus}）
+ * @return {Object} パース済みレスポンス（{ok, ...} or {ok:false, error}）
  */
 function slackApi(method, token, payload, contentType) {
   const isForm = contentType === 'form';
@@ -31,7 +31,6 @@ function slackApi(method, token, payload, contentType) {
   } catch (e) {
     return { ok: false, error: `invalid_json_response_${status}` };
   }
-  body._httpStatus = status;
   body._retryAfter = Number(res.getHeaders()['Retry-After'] || 0);
   return body;
 }

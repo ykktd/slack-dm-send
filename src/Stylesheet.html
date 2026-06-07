@@ -2,7 +2,7 @@
   :root {
     --bg: #f7f8fa; --card: #fff; --ink: #1d1c1d; --sub: #616061;
     --line: #e2e2e3; --primary: #007a5a; --primary-d: #006c4f;
-    --warn: #b8860b; --danger: #c0392b; --pill: #eef3f1;
+    --danger: #c0392b; --pill: #eef3f1;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
@@ -54,14 +54,12 @@
   .preview { border: 1px dashed var(--line); border-radius: 8px; padding: 10px;
     min-height: 40px; background: #fcfcfc; white-space: pre-wrap; word-break: break-word; }
   .preview a { color: #1264a3; }
-  .check { display: flex; gap: 8px; align-items: center; margin: 12px 0; font-size: 14px; }
   #testStatus { color: var(--primary); min-height: 1.2em; }
   .kv { display: grid; grid-template-columns: 90px 1fr; gap: 4px 12px; margin: 8px 0; }
   .kv dt { color: var(--sub); } .kv dd { margin: 0; font-weight: 600; }
   .cflist { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
     max-height: 200px; overflow-y: auto; }
   .cflist div { padding: 2px 0; }
-  .warn { color: var(--warn); font-weight: 600; }
   .summary { font-size: 16px; margin-bottom: 10px; }
   .summary .ok { color: var(--primary); font-weight: 700; }
   .summary .ng { color: var(--danger); font-weight: 700; }
