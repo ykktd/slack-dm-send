@@ -314,19 +314,20 @@
   }
 
   function logout() {
+    if (!window.confirm('ログアウトします。次回利用時はもう一度Slackと連携してください。')) return;
     var session = state.session;
     clearSession();
     if (!session) { show('login'); return; }
-    overlay(true, 'セッションを破棄中…');
+    overlay(true, 'ログアウト中…');
     google.script.run
       .withSuccessHandler(function () {
         overlay(false);
-        toast('セッションを破棄しました');
+        toast('ログアウトしました');
         show('login');
       })
       .withFailureHandler(function () {
         overlay(false);
-        toast('セッションを破棄しました');
+        toast('ログアウトしました');
         show('login');
       })
       .apiLogout(session);

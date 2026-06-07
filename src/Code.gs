@@ -123,8 +123,13 @@ function apiBootstrap(sessionId) {
   };
 }
 
-/** クライアント側のログアウト相当。Slack連携自体は解除せず、Web UIセッションだけ破棄する。 */
+/** クライアント側のログアウト。保存済みSlack連携情報も削除し、Web UIセッションを破棄する。 */
 function apiLogout(sessionId) {
-  destroySession(sessionId);
+  const userId = getUserIdFromSession(sessionId);
+  try {
+    if (userId) deleteUserToken(userId);
+  } finally {
+    destroySession(sessionId);
+  }
   return { ok: true };
 }
